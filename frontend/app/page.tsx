@@ -1,0 +1,34 @@
+﻿'use client';
+import { useState } from 'react';
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, KeyboardSensor, PointerSensor, pointerWithin, rectIntersection, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
+import { Plus, X, Trash2, Pencil, GripVertical, Layers3, ArrowUpRight, Check } from 'lucide-react';
+import { initialBoard, addCard, deleteCard, moveCard, renameColumn, type Card, type Column } from './board';
+
+function TaskCard({ card, onDelete }: { card: Card; onDelete: (id: string) => void }) {
+ const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: card.id });
+ return <article ref={setNodeRef} className={`task ${isDragging ? 'dragging' : ''}`} style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined}>
+  <div className="task-top"><span className="task-tag">وظیفه</span><div className="task-actions"><button className="icon-button delete" aria-label={`حذف ${card.title}`} onClick={() => onDelete(card.id)}><Trash2 size={15}/></button><button className="icon-button grip" aria-label={`جابه‌جایی ${card.title}`} {...listeners} {...attributes}><GripVertical size={17}/></button></div></div>
+  <h3>{card.title}</h3>{card.details && <p>{card.details}</p>}<div className="task-bottom"><span className="task-mark"/><span>کار تیمی</span><ArrowUpRight size={14}/></div>
+ </article>;
+}
+function BoardColumn({ column, index, onAdd, onDelete, onRename }: { column: Column; index: number; onAdd: (id: string) => void; onDelete: (id: string) => void; onRename: (id: string, name: string) => void }) {
+ const { setNodeRef, isOver } = useDroppable({ id: column.id }); const [editing, setEditing] = useState(false); const [name, setName] = useState(column.name);
+ function save() { onRename(column.id, name); setName(name.trim() || column.name); setEditing(false); }
+ return <section ref={setNodeRef} className={`column ${isOver ? 'over' : ''}`} aria-label={column.name}><div className="column-heading"><div className="column-title"><span className={`dot dot-${index}`}/>{editing ? <input autoFocus aria-label="نام ستون" value={name} onChange={e => setName(e.target.value)} onBlur={save} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setName(column.name); setEditing(false); } }}/>: <h2>{column.name}</h2>}<span className="count">{column.cards.length.toLocaleString('fa-IR')}</span></div><button className="icon-button edit" aria-label={`تغییر نام ${column.name}`} onClick={() => setEditing(true)}><Pencil size={15}/></button></div><div className="column-line"/><div className="cards">{column.cards.map(card => <TaskCard key={card.id} card={card} onDelete={onDelete}/>)}</div><button className="add-card" onClick={() => onAdd(column.id)}><Plus size={16}/> افزودن کارت</button></section>;
+}
+export default function Home() {
+ const [board, setBoard] = useState(initialBoard); const [adding, setAdding] = useState<string | null>(null); const [title, setTitle] = useState(''); const [details, setDetails] = useState(''); const [active, setActive] = useState<Card | null>(null);
+ const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor));
+ function close() { setAdding(null); setTitle(''); setDetails(''); }
+ function submit(e: React.FormEvent) { e.preventDefault(); if (!adding || !title.trim()) return; setBoard(b => addCard(b, adding, { id: crypto.randomUUID(), title: title.trim(), details: details.trim() })); close(); }
+ function dragStart(e: DragStartEvent) { setActive(board.flatMap(c => c.cards).find(c => c.id === e.active.id) || null); }
+ function dragEnd(e: DragEndEvent) { if (e.over) setBoard(b => moveCard(b, String(e.active.id), String(e.over!.id))); setActive(null); }
+ const total = board.reduce((sum, c) => sum + c.cards.length, 0);
+ return <main ref={node => { if (node) node.dataset.ready = 'true'; }}><div className="app-shell"><header className="topbar"><div className="brand"><span className="brand-icon"><Layers3 size={21}/></span><span>کارنما<span className="brand-dot">.</span></span></div><div className="topbar-right"><span className="workspace-label">فضای کاری شخصی</span><span className="avatar">ک</span></div></header>
+ <div className="content"><div className="breadcrumb">فضای کاری <span>/</span> <strong>تخته پروژه</strong></div><div className="hero"><div><div className="eyebrow"><span/> فضای کار شما</div><h1>ایده‌ها را به انجام برسانید<span>.</span></h1><p>همه کارها، یک جا. قدم به قدم تا رسیدن به هدف.</p></div><div className="summary"><div className="summary-icon"><Check size={19}/></div><div><strong>{total.toLocaleString('fa-IR')} کارت</strong><small>در تخته پروژه</small></div></div></div>
+ <div className="board-heading"><div><h2>تخته پروژه <span>نمای کلی</span></h2><p>برای جابه‌جایی، کارت‌ها را بکشید و رها کنید.</p></div><div className="board-badge"><span/> تخته فعال</div></div>
+ <DndContext collisionDetection={args => { const hits = pointerWithin(args); return hits.length ? hits : rectIntersection(args); }} sensors={sensors} onDragStart={dragStart} onDragEnd={dragEnd} onDragCancel={() => setActive(null)}><div className="board">{board.map((column, index) => <BoardColumn key={column.id} column={column} index={index} onAdd={setAdding} onDelete={id => setBoard(b => deleteCard(b, id))} onRename={(id, name) => setBoard(b => renameColumn(b, id, name))}/>)}</div><DragOverlay>{active ? <div className="task overlay"><h3>{active.title}</h3><p>{active.details}</p></div> : null}</DragOverlay></DndContext>
+ <footer><span>فضایی برای تمرکز روی کارهای مهم</span><span>کارنما <span className="brand-dot">●</span></span></footer></div></div>
+ {adding && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) close(); }}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div className="modal-header"><div><span className="eyebrow">یک قدم تازه</span><h2 id="modal-title">افزودن کارت</h2></div><button className="icon-button" aria-label="بستن" onClick={close}><X size={20}/></button></div><p>یک کار جدید به «{board.find(c => c.id === adding)?.name}» اضافه کنید.</p><form onSubmit={submit}><label htmlFor="title">عنوان کارت <span>*</span></label><input id="title" autoFocus required value={title} onChange={e => setTitle(e.target.value)} placeholder="مثلاً طراحی صفحه اصلی"/><label htmlFor="details">جزئیات <small>اختیاری</small></label><textarea id="details" rows={4} value={details} onChange={e => setDetails(e.target.value)} placeholder="توضیح کوتاهی درباره این کار بنویسید..."/><div className="modal-actions"><button type="button" className="cancel" onClick={close}>انصراف</button><button className="submit" type="submit">افزودن کارت <Plus size={16}/></button></div></form></div></div>}</main>;
+}
+
